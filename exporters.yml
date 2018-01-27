@@ -1,4 +1,4 @@
-version: "3.2"
+version: "3.3"
 
 services:
 
@@ -7,19 +7,21 @@ services:
     networks:
       - proxy
       - monitor
+    environment:
+      - LOGSPOUT=ignore
     deploy:
       labels:
         - com.df.notify=true
         - com.df.scrapePort=9101
       resources:
         reservations:
-          memory: 20M
+          memory: 48M
         limits:
-          memory: 50M
+          memory: 64M
     command: --haproxy.scrape-uri="http://admin:admin@proxy_proxy/admin?stats;csv"
 
   cadvisor:
-    image: patrickleet/cadvisor
+    image: google/cadvisor:${CADVISOR_TAG:-latest}
     networks:
       - monitor
     volumes:
@@ -27,6 +29,8 @@ services:
       - /var/run:/var/run
       - /sys:/sys
       - /var/lib/docker:/var/lib/docker
+    environment:
+      - LOGSPOUT=ignore
     deploy:
       mode: global
       labels:
@@ -34,16 +38,17 @@ services:
         - com.df.scrapePort=8080
       resources:
         reservations:
-          memory: 30M
+          memory: 48M
         limits:
-          memory: 50M
+          memory: 64M
 
   node-exporter:
-    image: basi/node-exporter:${NODE_EXPORTER_TAG:-v1.13.0}
+    image: basi/node-exporter:${NODE_EXPORTER_TAG:-v1.14.0.p1}
     networks:
       - monitor
     environment:
       - HOST_HOSTNAME=/etc/host_hostname
+      - LOGSPOUT=ignore
     volumes:
       - /proc:/host/proc
       - /sys:/host/sys
@@ -62,9 +67,9 @@ services:
         - com.df.alertFor.2=30s
       resources:
         reservations:
-          memory: 20M
+          memory: 48M
         limits:
-          memory: 50M
+          memory: 64M
     command: '-collector.procfs /host/proc -collector.sysfs /host/sys -collector.filesystem.ignored-mount-points "^/(sys|proc|dev|host|etc)($$|/)" -collector.textfile.directory /etc/node-exporter/ -collectors.enabled="conntrack,diskstats,entropy,filefd,filesystem,loadavg,mdadm,meminfo,netdev,netstat,stat,textfile,time,vmstat,ipvs"'
 
 networks:

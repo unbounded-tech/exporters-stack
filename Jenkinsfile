@@ -2,6 +2,10 @@ pipeline {
   agent {
     label "docker"
   }
+  options {
+    buildDiscarder(logRotator(numToKeepStr: '2'))
+    disableConcurrentBuilds()
+  }
   stages {
     stage("notify") {
       steps {
@@ -24,7 +28,7 @@ pipeline {
         branch "master"
       }
       steps {
-        sh "docker stack deploy -c exporters.yml exporters"
+        sh "docker stack deploy --prune -c exporters.yml exporters"
       }
     }
   }
