@@ -42,7 +42,7 @@ services:
         limits:
           memory: 64M
 
-  node-exporter:
+  node-exporter-manager:
     image: basi/node-exporter:${NODE_EXPORTER_TAG:-v1.14.0.p1}
     networks:
       - monitor
@@ -59,12 +59,13 @@ services:
       labels:
         - com.df.notify=true
         - com.df.scrapePort=9100
-        - com.df.alertName.1=memload
-        - com.df.alertIf.1=@node_mem_limit:0.8
+        - com.df.alertName.1=node_mem_limit_total_above
+        - com.df.alertIf.1=@node_mem_limit_total_above:0.85
+        - com.df.alertLabels.1=receiver=system,scale=no,service=exporters_node-exporter-manager,type=node
         - com.df.alertFor.1=30s
-        - com.df.alertName.2=diskload
-        - com.df.alertIf.2=@node_fs_limit:0.8
-        - com.df.alertFor.2=30s
+      placement:
+        constraints:
+          - node.role == manager
       resources:
         reservations:
           memory: 48M
@@ -72,10 +73,84 @@ services:
           memory: 64M
     command: '-collector.procfs /host/proc -collector.sysfs /host/sys -collector.filesystem.ignored-mount-points "^/(sys|proc|dev|host|etc)($$|/)" -collector.textfile.directory /etc/node-exporter/ -collectors.enabled="conntrack,diskstats,entropy,filefd,filesystem,loadavg,mdadm,meminfo,netdev,netstat,stat,textfile,time,vmstat,ipvs"'
 
+  node-exporter-worker:
+    image: basi/node-exporter:${NODE_EXPORTER_TAG:-v1.14.0.p1}
+    networks:
+      - monitor
+    environment:
+      - HOST_HOSTNAME=/etc/host_hostname
+      - LOGSPOUT=ignore
+    volumes:
+      - /proc:/host/proc
+      - /sys:/host/sys
+      - /:/rootfs
+      - /etc/hostname:/etc/host_hostname
+    deploy:
+      mode: global
+      labels:
+        - com.df.notify=true
+        - com.df.scrapePort=9100
+        - com.df.alertName.1=node_mem_limit_total_above
+        - com.df.alertIf.1=@node_mem_limit_total_above:0.85
+        - com.df.alertFor.1=30s
+        - com.df.alertName.2=node_scale_down
+        - com.df.alertIf.2=sum(node_memory_MemFree{job="exporters_node-exporter-worker"} + node_memory_Buffers{job="exporters_node-exporter-worker"} + node_memory_Cached{job="exporters_node-exporter-worker"}) > (sum(node_memory_MemTotal{job="exporters_node-exporter-worker"}) / count(node_memory_MemTotal{job="exporters_node-exporter-worker"})) * 1.5
+        - com.df.alertFor.2=30s
+      placement:
+        constraints:
+          - node.role == worker
+      resources:
+        reservations:
+          memory: 48M
+        limits:
+          memory: 64M
+    command: '-collector.procfs /host/proc -collector.sysfs /host/sys -collector.filesystem.ignored-mount-points "^/(sys|proc|dev|host|etc)($$|/)" -collector.textfile.directory /etc/node-exporter/ -collectors.enabled="conntrack,diskstats,entropy,filefd,filesystem,loadavg,mdadm,meminfo,netdev,netstat,stat,textfile,time,vmstat,ipvs"'
+
+  rabbitmq:
+    image: kbudde/rabbitmq-exporter:${RMQ_EXPORTER_TAG:-v0.25.2}
+    environment:
+      RABBIT_URL: "http://servicebus_rmq1:15672"
+      PUBLISH_PORT: "9090"
+      LOG_LEVEL: "info"
+      INCLUDE_QUEUES: ".*"
+      RABBIT_USER_FILE: "/run/secrets/servicebus.rabbitmq.admin"
+      RABBIT_PASSWORD_FILE: "/run/secrets/servicebus.rabbitmq.adminPassword"
+      LOGSPOUT: "ignore"
+    networks:
+      - servicebus
+      - monitor
+    secrets:
+      - servicebus.rabbitmq.admin
+      - servicebus.rabbitmq.adminPassword
+    deploy:
+      labels:
+        - com.df.notify=true
+        - com.df.scrapePort=9090
+        - com.df.scrapeInterval=5s
+      resources:
+        reservations:
+          memory: 48M
+        limits:
+          memory: 64M
+      placement:
+        constraints:
+          - node.role == worker
+
 networks:
 
   monitor:
     external: true
   
   proxy:
+    external: true
+
+  servicebus:
+    external: true
+
+secrets:
+
+  servicebus.rabbitmq.admin:
+    external: true
+
+  servicebus.rabbitmq.adminPassword:
     external: true
